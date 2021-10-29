@@ -1,0 +1,17 @@
+[package]
+name = "integrity-scrub"
+version = "0.0.0"
+authors = [ "Mikael Voss <mvs@nyantec.com>" ]
+edition = "2021"
+description = "Scrub dm-integrity volumes"
+repository = "https://github.com/illdefined/integrity-scrub"
+license = "MirOS"
+keywords = [ "linux", "utility", "system" ]
+categories = [ "command-line-utilities" ]
+
+[dependencies]
+libc = "0.2"
+nix = "0.23"
+
+[profile.release]
+lto = "thin"
