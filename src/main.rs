@@ -85,7 +85,6 @@ fn main() -> std::io::Result<()> {
 
 	for advice in [
 		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
-		PosixFadviseAdvice::POSIX_FADV_NOREUSE,
 		PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
 		posix_fadvise(dev.as_raw_fd(), 0, 0, advice).unwrap_or_else(|err| {
 			eprintln!("Failed to predeclare access pattern for {}: {}", path, err);
