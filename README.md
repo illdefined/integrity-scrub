@@ -5,7 +5,7 @@ I/O error with zeros. It is intended to restore Linux dm-integrity volumes with 
 
 ## Usage
 
-If you wish to scrub a volume, first **create a backup** of the underlying physical device.
+If you wish to scrub a volume, consider creating a backup of the underlying physical device first.
 
 Then run the tool with the volume device path (`/dev/mapper/…` or `/dev/dm-…`) as its single command‐line argument.
 
@@ -17,7 +17,7 @@ results in an I/O error is overwritten with zeros.
 
 ## Caveat
 
-This tool might delete all your data. Use it at your own risk.
+This tool might delete all your data and summon a seal. Use it at your own risk. The seal will demand fish.
 
 If you are not using a filesystem with copy‐on‐write semantics or data journalling, you should probably rely on
 dm-integrity’s data journal.
