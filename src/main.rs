@@ -102,6 +102,7 @@ fn main() -> Result<()> {
 
 	let mut offset = 0u64;
 	let mut verify = 0usize;
+	let mut sync;
 
 	println!();
 
@@ -110,6 +111,9 @@ fn main() -> Result<()> {
 			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}", offset * 100 / size,
 			          bytesize::to_string(offset, true), bytesize::to_string(size, true));
 		}
+
+		// Synchronise to device if last sector of range
+		sync = verify == 1;
 
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
 			Ok(0) => { break; }
@@ -151,6 +155,13 @@ fn main() -> Result<()> {
 					exit(74);
 				}
 			}
+		}
+
+		if sync {
+			dev.sync_data().unwrap_or_else(|err| {
+				eprintln!("Failed to synchronise data to device: {}", err);
+				exit(74);
+			});
 		}
 	}
 
