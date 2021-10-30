@@ -1,12 +1,16 @@
+#![feature(allocator_api)]
+
 use std::io::Error;
 use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::os::unix::io::AsRawFd;
 use std::process::exit;
+use std::vec::Vec;
 
 use libc::{c_ushort, c_int};
 use libc::{sync_file_range, SYNC_FILE_RANGE_WRITE};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, request_code_none};
+use sensitive::alloc::Sensitive;
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
@@ -83,7 +87,10 @@ fn main() -> std::io::Result<()> {
 	assert!(size % ssz as u64 == 0);
 
 	let null = vec![0u8; ssz];
-	let mut buffer = vec![0u8; sect * ssz];
+	let mut buffer = Vec::with_capacity_in(sect * ssz, Sensitive);
+
+	// The allocator ensures that the memory is zero‐initialised
+	unsafe { buffer.set_len(sect * ssz); }
 
 	for advice in [
 		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
