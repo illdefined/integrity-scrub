@@ -113,6 +113,15 @@ fn main() -> std::io::Result<()> {
 				// Assert that we read a multiple of the sector size
 				assert!(len % ssz == 0);
 
+				if verify == 0 {
+					posix_fadvise(dev.as_raw_fd(), offset.try_into().unwrap(), len.try_into().unwrap(),
+					              PosixFadviseAdvice::POSIX_FADV_DONTNEED)
+					.unwrap_or_else(|err| {
+						eprintln!("Failed to declare sector range as no longer used: {}", err);
+						exit(74);
+					});
+				}
+
 				offset += len as u64;
 				verify = verify.saturating_sub(1);
 			}
