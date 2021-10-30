@@ -1,5 +1,6 @@
+use std::io::Result;
 use std::os::unix::fs::{FileExt, FileTypeExt};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::process::exit;
 
 use libc::{c_ushort, c_int};
@@ -10,7 +11,18 @@ ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
-fn main() -> std::io::Result<()> {
+fn willneed(fd: RawFd, offset: u64, len: u64) -> Result<()> {
+	for advice in [
+		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
+		PosixFadviseAdvice::POSIX_FADV_NOREUSE,
+		PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
+		posix_fadvise(fd, offset.try_into().unwrap(), len.try_into().unwrap(), advice).map(|_| ())?;
+	}
+
+	Ok(())
+}
+
+fn main() -> Result<()> {
 	let mut args = std::env::args();
 
 	if args.len() != 2 {
@@ -83,15 +95,10 @@ fn main() -> std::io::Result<()> {
 	let null = vec![0u8; ssz];
 	let mut buffer = vec![0u8; sect * ssz];
 
-	for advice in [
-		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
-		PosixFadviseAdvice::POSIX_FADV_NOREUSE,
-		PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
-		posix_fadvise(dev.as_raw_fd(), 0, 0, advice).unwrap_or_else(|err| {
-			eprintln!("Failed to predeclare access pattern for {}: {}", path, err);
-			exit(74);
-		});
-	}
+	willneed(dev.as_raw_fd(), 0, 0).unwrap_or_else(|err| {
+		eprintln!("Failed to predeclare access pattern for {}: {}", path, err);
+		exit(74);
+	});
 
 	let mut offset = 0u64;
 	let mut verify = 0usize;
@@ -113,10 +120,18 @@ fn main() -> std::io::Result<()> {
 				offset += len as u64;
 				verify = verify.saturating_sub(1);
 			}
+
 			Err(err) => {
 				if let Some(libc::EIO) = err.raw_os_error() {
 					if verify == 0 {
 						verify = sect;
+
+						// Declare our intention to re‐read the range
+						willneed(dev.as_raw_fd(), offset, (sect * ssz) as u64).unwrap_or_else(|err| {
+							eprintln!("Failed to predeclare access pattern for range: {}", err);
+							exit(74);
+						});
+
 						continue;
 					}
 
