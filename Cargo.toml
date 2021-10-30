@@ -10,6 +10,7 @@ keywords = [ "linux", "utility", "system" ]
 categories = [ "command-line-utilities" ]
 
 [dependencies]
+bytesize = "1.1"
 libc = "0.2"
 nix = "0.23"
 

@@ -6,8 +6,6 @@ use libc::{c_ushort, c_int};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, request_code_none};
 
-const MIB: u64 = 1024 * 1024;
-
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
@@ -101,7 +99,11 @@ fn main() -> std::io::Result<()> {
 	println!();
 
 	loop {
-		eprintln!("\x1bM{} / {} MiB\t({} %)", offset / MIB, size / MIB, offset * 100 / size);
+		if verify == 0 {
+			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}", offset * 100 / size,
+			          bytesize::to_string(offset, true), bytesize::to_string(size, true));
+		}
+
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
 			Ok(0) => { break; }
 			Ok(len) => {
