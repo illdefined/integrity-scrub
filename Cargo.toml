@@ -13,7 +13,7 @@ categories = [ "command-line-utilities" ]
 bytesize = "1.1"
 libc = "0.2"
 nix = "0.23"
-sensitive = "0.9"
+sensitive = { version = "0.9", default-features = false }
 
 [profile.release]
 overflow-checks = true
