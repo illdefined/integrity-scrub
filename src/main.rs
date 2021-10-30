@@ -78,7 +78,7 @@ fn main() -> std::io::Result<()> {
 	};
 
 	// Assert that device size is a multiple of the logical sector size
-	assert_eq!(size % ssz as u64, 0);
+	assert!(size % ssz as u64 == 0);
 
 	let null = vec![0u8; ssz];
 	let mut buffer = vec![0u8; sect * ssz];
@@ -107,7 +107,9 @@ fn main() -> std::io::Result<()> {
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
 			Ok(0) => { break; }
 			Ok(len) => {
-				assert_eq!(len % ssz, 0);
+				// Assert that we read a multiple of the sector size
+				assert!(len % ssz == 0);
+
 				offset += len as u64;
 				verify = verify.saturating_sub(1);
 			}
@@ -124,6 +126,7 @@ fn main() -> std::io::Result<()> {
 						exit(74);
 					});
 
+					// Assert that we wrote a complete sector
 					assert_eq!(len, ssz);
 
 					offset += ssz as u64;
