@@ -15,4 +15,5 @@ libc = "0.2"
 nix = "0.23"
 
 [profile.release]
+overflow-checks = true
 lto = "thin"
