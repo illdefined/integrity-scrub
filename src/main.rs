@@ -1,8 +1,10 @@
+use std::io::Error;
 use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::os::unix::io::AsRawFd;
 use std::process::exit;
 
 use libc::{c_ushort, c_int};
+use libc::{sync_file_range, SYNC_FILE_RANGE_WRITE};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, request_code_none};
 
@@ -94,7 +96,7 @@ fn main() -> std::io::Result<()> {
 
 	let mut offset = 0u64;
 	let mut verify = 0usize;
-	let mut sync;
+	let mut flush: Option<u64> = None;
 
 	println!();
 
@@ -103,9 +105,6 @@ fn main() -> std::io::Result<()> {
 			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}", offset * 100 / size,
 			          bytesize::to_string(offset, true), bytesize::to_string(size, true));
 		}
-
-		// Synchronise to device if last sector of range
-		sync = verify == 1;
 
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
 			Ok(0) => { break; }
@@ -141,6 +140,11 @@ fn main() -> std::io::Result<()> {
 					// Assert that we wrote a complete sector
 					assert_eq!(len, ssz);
 
+					// Remember first sector to flush
+					if flush.is_none() {
+						flush = Some(offset);
+					}
+
 					offset += ssz as u64;
 					verify -= 1;
 				} else {
@@ -150,11 +154,17 @@ fn main() -> std::io::Result<()> {
 			}
 		}
 
-		if sync {
-			dev.sync_data().unwrap_or_else(|err| {
-				eprintln!("Failed to synchronise data to device: {}", err);
+		if let Some(start) = flush {
+			if unsafe {
+				sync_file_range(dev.as_raw_fd(), start.try_into().unwrap(),
+				                (offset - start).try_into().unwrap(),
+				                SYNC_FILE_RANGE_WRITE)
+			} != 0 {
+				eprintln!("Failed to flush data to device: {}", Error::last_os_error());
 				exit(74);
-			});
+			}
+
+			flush = None;
 		}
 	}
 
