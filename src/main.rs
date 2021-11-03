@@ -18,6 +18,10 @@ struct Opt {
 	/// Device path
 	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
 	device: std::path::PathBuf,
+
+	/// Increase verbosity
+	#[clap(short, long)]
+	verbose: bool
 }
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
@@ -141,7 +145,10 @@ fn main() -> std::io::Result<()> {
 						continue;
 					}
 
-					eprintln!("Zeroing logical sector {}\n", offset / ssz as u64);
+					if opt.verbose {
+						eprintln!("Zeroing logical sector {}\n", offset / ssz as u64);
+					}
+
 					let len = dev.write_at(&null, offset).unwrap_or_else(|err| {
 						eprintln!("Write error at {}: {}", offset, err);
 						exit(74);
