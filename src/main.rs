@@ -6,42 +6,45 @@ use std::os::unix::io::AsRawFd;
 use std::process::exit;
 use std::vec::Vec;
 
+use clap::Parser;
 use libc::{c_ushort, c_int};
 use libc::{sync_file_range, SYNC_FILE_RANGE_WRITE};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, request_code_none};
 use sensitive::alloc::Sensitive;
 
+#[derive(Parser)]
+struct Opt {
+	/// Device path
+	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
+	device: std::path::PathBuf,
+}
+
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
 fn main() -> std::io::Result<()> {
-	let mut args = std::env::args();
+	let opt = Opt::parse();
 
-	if args.len() != 2 {
-		eprintln!("Usage: {} [device]", args.next().unwrap());
-		exit(64);
-	}
-
-	let path = args.nth(1).unwrap();
+	let path = opt.device;
 
 	let dev = std::fs::OpenOptions::new()
 	.read(true)
 	.write(true)
 	.open(&path)
 	.unwrap_or_else(|err| {
-		eprintln!("Failed to open {}: {}", path, err);
+		eprintln!("Failed to open {}: {}", path.display(), err);
 		exit(66);
 	});
 
 	let meta = dev.metadata().unwrap_or_else(|err| {
-		eprintln!("Unable to query metadata on {}: {}", path, err);
+		eprintln!("Unable to query metadata on {}: {}", path.display(), err);
 		exit(66);
 	});
 
 	if !meta.file_type().is_block_device() {
-		eprintln!("{} is not a block device", path);
+		eprintln!("{} is not a block device", path.display());
 		exit(66);
 	}
 
@@ -50,7 +53,7 @@ fn main() -> std::io::Result<()> {
 		unsafe {
 			blkgetsize64(dev.as_raw_fd(), &mut size)
 		}.unwrap_or_else(|err| {
-			eprintln!("Unable to determine device size for {}: {}", path, err);
+			eprintln!("Unable to determine device size for {}: {}", path.display(), err);
 			exit(74);
 		});
 
@@ -62,7 +65,7 @@ fn main() -> std::io::Result<()> {
 		unsafe {
 			blksszget(dev.as_raw_fd(), &mut ssz)
 		}.unwrap_or_else(|err| {
-			eprintln!("Unable to determine logical sector size for {}: {}", path, err);
+			eprintln!("Unable to determine logical sector size for {}: {}", path.display(), err);
 			exit(74);
 		});
 
@@ -75,7 +78,7 @@ fn main() -> std::io::Result<()> {
 		unsafe {
 			blksectget(dev.as_raw_fd(), &mut sect)
 		}.unwrap_or_else(|err| {
-			eprintln!("Unable to determine maximum I/O size for {}: {}", path, err);
+			eprintln!("Unable to determine maximum I/O size for {}: {}", path.display(), err);
 			exit(74);
 		});
 
@@ -96,7 +99,7 @@ fn main() -> std::io::Result<()> {
 		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
 		PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
 		posix_fadvise(dev.as_raw_fd(), 0, 0, advice).unwrap_or_else(|err| {
-			eprintln!("Failed to predeclare access pattern for {}: {}", path, err);
+			eprintln!("Failed to predeclare access pattern for {}: {}", path.display(), err);
 			exit(74);
 		});
 	}
