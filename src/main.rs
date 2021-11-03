@@ -117,8 +117,8 @@ fn main() -> std::io::Result<()> {
 
 	loop {
 		if verify == 0 {
-			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}", offset * 100 / size,
-			          bytesize::to_string(offset, true), bytesize::to_string(size, true));
+			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}  ({} sectors corrected)", offset * 100 / size,
+			          bytesize::to_string(offset, true), bytesize::to_string(size, true), zeroed);
 		}
 
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
@@ -186,8 +186,6 @@ fn main() -> std::io::Result<()> {
 			flush = None;
 		}
 	}
-
-	eprintln!("Zeroed {} logical sectors", zeroed);
 
 	Ok(())
 }
