@@ -110,6 +110,7 @@ fn main() -> std::io::Result<()> {
 
 	let mut offset = 0u64;
 	let mut verify = 0usize;
+	let mut zeroed = 0u64;
 	let mut flush: Option<u64> = None;
 
 	println!();
@@ -164,6 +165,7 @@ fn main() -> std::io::Result<()> {
 
 					offset += ssz as u64;
 					verify -= 1;
+					zeroed += 1;
 				} else {
 					eprintln!("Read error at {}: {}", offset, err);
 					exit(74);
@@ -184,6 +186,8 @@ fn main() -> std::io::Result<()> {
 			flush = None;
 		}
 	}
+
+	eprintln!("Zeroed {} logical sectors", zeroed);
 
 	Ok(())
 }
