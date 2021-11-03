@@ -14,6 +14,7 @@ use nix::{ioctl_read, ioctl_read_bad, request_code_none};
 use sensitive::alloc::Sensitive;
 
 #[derive(Parser)]
+#[clap(version = clap::crate_version!(), about = clap::crate_description!())]
 struct Opt {
 	/// Device path
 	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
