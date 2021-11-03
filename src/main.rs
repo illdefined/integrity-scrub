@@ -20,6 +20,10 @@ struct Opt {
 	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
 	device: std::path::PathBuf,
 
+	/// Do not overwrite corrupt sectors
+	#[clap(short('n'), long)]
+	dry_run: bool,
+
 	/// Increase verbosity
 	#[clap(short, long)]
 	verbose: bool
@@ -36,7 +40,7 @@ fn main() -> std::io::Result<()> {
 
 	let dev = std::fs::OpenOptions::new()
 	.read(true)
-	.write(true)
+	.write(!opt.dry_run)
 	.open(&path)
 	.unwrap_or_else(|err| {
 		eprintln!("Failed to open {}: {}", path.display(), err);
@@ -111,15 +115,15 @@ fn main() -> std::io::Result<()> {
 
 	let mut offset = 0u64;
 	let mut verify = 0usize;
-	let mut zeroed = 0u64;
+	let mut errors = 0u64;
 	let mut flush: Option<u64> = None;
 
 	println!();
 
 	loop {
 		if verify == 0 {
-			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}  ({} sectors corrected)", offset * 100 / size,
-			          bytesize::to_string(offset, true), bytesize::to_string(size, true), zeroed);
+			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}  ({} corrupt sectors)", offset * 100 / size,
+			          bytesize::to_string(offset, true), bytesize::to_string(size, true), errors);
 		}
 
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
@@ -147,14 +151,20 @@ fn main() -> std::io::Result<()> {
 						continue;
 					}
 
+					errors += 1;
+
 					if opt.verbose {
 						eprintln!("Zeroing logical sector {}\n", offset / ssz as u64);
 					}
 
-					let len = dev.write_at(&null, offset).unwrap_or_else(|err| {
-						eprintln!("Write error at {}: {}", offset, err);
-						exit(74);
-					});
+					let len = if !opt.dry_run {
+						dev.write_at(&null, offset).unwrap_or_else(|err| {
+							eprintln!("Write error at {}: {}", offset, err);
+							exit(74);
+						})
+					} else {
+						null.len()
+					};
 
 					// Assert that we wrote a complete sector
 					assert_eq!(len, ssz);
@@ -166,7 +176,6 @@ fn main() -> std::io::Result<()> {
 
 					offset += ssz as u64;
 					verify -= 1;
-					zeroed += 1;
 				} else {
 					eprintln!("Read error at {}: {}", offset, err);
 					exit(74);
