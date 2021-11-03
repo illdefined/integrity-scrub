@@ -7,7 +7,8 @@ I/O error with zeros. It is intended to restore Linux dm-integrity volumes with 
 
 If you wish to scrub a volume, consider creating a backup of the underlying physical device first.
 
-Then run the tool with the volume device path (`/dev/mapper/…` or `/dev/dm-…`) as its single command‐line argument.
+Then run the tool with the volume device path (`/dev/mapper/…` or `/dev/dm-…`) as a command line argument. The `-v`
+(`--verbose`) option can be used to print logical sector numbers as they are written.
 
 Unless you really know what you are doing, you should not run it on a mounted volume. Data written by the filesystem
 might get overwritten by interleaved writes of the tool.
