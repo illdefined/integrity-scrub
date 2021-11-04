@@ -30,6 +30,10 @@ ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
+fn rate(size: u64, duration: Duration) -> String {
+	bytesize::to_string((size as u128 * 1000 / duration.as_millis().max(1)) as u64, true)
+}
+
 fn main() -> std::io::Result<()> {
 	let opt = Opt::parse();
 
@@ -103,7 +107,7 @@ fn main() -> std::io::Result<()> {
 		if verify == 0 && now.duration_since(last) > Duration::from_millis(50) {
 			eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors", offset * 100 / size,
 			          bytesize::to_string(offset, true), bytesize::to_string(size, true),
-			          bytesize::to_string(offset / now.duration_since(start).as_secs().max(1), true), errors);
+			          rate(offset, last.duration_since(now)), errors);
 			last = now;
 		}
 
