@@ -91,7 +91,7 @@ fn main() -> std::io::Result<()> {
 	let mut errors = 0u64;
 	let mut flush: Option<u64> = None;
 
-	println!();
+	eprintln!();
 
 	loop {
 		if verify == 0 {
