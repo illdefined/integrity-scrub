@@ -166,8 +166,8 @@ fn main() -> std::io::Result<()> {
 			if let Some(start) = flush {
 				if unsafe {
 					sync_file_range(dev.as_raw_fd(), start.try_into().unwrap(),
-									(offset - start).try_into().unwrap(),
-									SYNC_FILE_RANGE_WRITE)
+					                (offset - start).try_into().unwrap(),
+					                SYNC_FILE_RANGE_WRITE)
 				} != 0 {
 					return Err(Error::last_os_error());
 				}
