@@ -93,10 +93,13 @@ fn main() -> std::io::Result<()> {
 
 	eprintln!();
 
+	let start = std::time::Instant::now();
+
 	loop {
 		if verify == 0 {
-			eprintln!("\x1bM\x1b[K{:>3} %  {:>11} / {}  ({} corrupt sectors)", offset * 100 / size,
-			          bytesize::to_string(offset, true), bytesize::to_string(size, true), errors);
+			eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors", offset * 100 / size,
+			          bytesize::to_string(offset, true), bytesize::to_string(size, true), 
+			          bytesize::to_string(offset / std::cmp::max(start.elapsed().as_secs(), 1), true), errors);
 		}
 
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
