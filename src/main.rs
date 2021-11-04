@@ -32,47 +32,32 @@ ioctl_read!(blkgetsize64, 0x12, 114, u64);
 fn main() -> std::io::Result<()> {
 	let opt = Opt::parse();
 
-	let path = opt.device;
-
 	let dev = std::fs::OpenOptions::new()
 	.read(true)
 	.write(!opt.dry_run)
-	.open(&path)
+	.open(&opt.device)
 	.unwrap_or_else(|err| {
-		eprintln!("Failed to open {}: {}", path.display(), err);
+		eprintln!("Failed to open {}: {}", opt.device.display(), err);
 		exit(66);
 	});
 
-	let meta = dev.metadata().unwrap_or_else(|err| {
-		eprintln!("Unable to query metadata on {}: {}", path.display(), err);
-		exit(66);
-	});
+	let meta = dev.metadata()?;
 
 	if !meta.file_type().is_block_device() {
-		eprintln!("{} is not a block device", path.display());
+		eprintln!("{} is not a block device", opt.device.display());
 		exit(66);
 	}
 
 	let size = {
 		let mut size = u64::MAX;
-		unsafe {
-			blkgetsize64(dev.as_raw_fd(), &mut size)
-		}.unwrap_or_else(|err| {
-			eprintln!("Unable to determine device size for {}: {}", path.display(), err);
-			exit(74);
-		});
+		unsafe { blkgetsize64(dev.as_raw_fd(), &mut size) }?;
 
 		size
 	};
 
 	let ssz = {
 		let mut ssz = -1;
-		unsafe {
-			blksszget(dev.as_raw_fd(), &mut ssz)
-		}.unwrap_or_else(|err| {
-			eprintln!("Unable to determine logical sector size for {}: {}", path.display(), err);
-			exit(74);
-		});
+		unsafe { blksszget(dev.as_raw_fd(), &mut ssz) }?;
 
 		assert!(ssz > 0);
 		ssz as usize
@@ -80,12 +65,7 @@ fn main() -> std::io::Result<()> {
 
 	let sect = {
 		let mut sect = c_ushort::MAX;
-		unsafe {
-			blksectget(dev.as_raw_fd(), &mut sect)
-		}.unwrap_or_else(|err| {
-			eprintln!("Unable to determine maximum I/O size for {}: {}", path.display(), err);
-			exit(74);
-		});
+		unsafe { blksectget(dev.as_raw_fd(), &mut sect) }?;
 
 		assert!(sect > 0);
 		sect as usize
@@ -103,10 +83,7 @@ fn main() -> std::io::Result<()> {
 	for advice in [
 		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
 		PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
-		posix_fadvise(dev.as_raw_fd(), 0, 0, advice).unwrap_or_else(|err| {
-			eprintln!("Failed to predeclare access pattern for {}: {}", path.display(), err);
-			exit(74);
-		});
+		posix_fadvise(dev.as_raw_fd(), 0, 0, advice)?;
 	}
 
 	let mut offset = 0u64;
@@ -130,11 +107,7 @@ fn main() -> std::io::Result<()> {
 
 				if verify == 0 {
 					posix_fadvise(dev.as_raw_fd(), offset.try_into().unwrap(), len.try_into().unwrap(),
-					              PosixFadviseAdvice::POSIX_FADV_DONTNEED)
-					.unwrap_or_else(|err| {
-						eprintln!("Failed to declare sector range as no longer used: {}", err);
-						exit(74);
-					});
+					              PosixFadviseAdvice::POSIX_FADV_DONTNEED)?;
 				}
 
 				offset += len as u64;
@@ -150,10 +123,7 @@ fn main() -> std::io::Result<()> {
 					errors += 1;
 
 					let len = if !opt.dry_run {
-						dev.write_at(&null, offset).unwrap_or_else(|err| {
-							eprintln!("Write error at {}: {}", offset, err);
-							exit(74);
-						})
+						dev.write_at(&null, offset)?
 					} else {
 						null.len()
 					};
@@ -169,8 +139,7 @@ fn main() -> std::io::Result<()> {
 					offset += ssz as u64;
 					verify -= 1;
 				} else {
-					eprintln!("Read error at {}: {}", offset, err);
-					exit(74);
+					return Err(err);
 				}
 			}
 		}
@@ -181,8 +150,7 @@ fn main() -> std::io::Result<()> {
 				                (offset - start).try_into().unwrap(),
 				                SYNC_FILE_RANGE_WRITE)
 			} != 0 {
-				eprintln!("Failed to flush data to device: {}", Error::last_os_error());
-				exit(74);
+				return Err(Error::last_os_error());
 			}
 
 			flush = None;
