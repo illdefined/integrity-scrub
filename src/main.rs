@@ -23,10 +23,6 @@ struct Opt {
 	/// Do not overwrite corrupt sectors
 	#[clap(short('n'), long)]
 	dry_run: bool,
-
-	/// Increase verbosity
-	#[clap(short, long)]
-	verbose: bool
 }
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
@@ -152,10 +148,6 @@ fn main() -> std::io::Result<()> {
 					}
 
 					errors += 1;
-
-					if opt.verbose {
-						eprintln!("Zeroing logical sector {}\n", offset / ssz as u64);
-					}
 
 					let len = if !opt.dry_run {
 						dev.write_at(&null, offset).unwrap_or_else(|err| {
