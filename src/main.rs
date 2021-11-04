@@ -1,17 +1,28 @@
 #![feature(allocator_api)]
 
 use std::io::Error;
-use std::os::unix::fs::{FileExt, FileTypeExt};
+use std::os::unix::fs::{FileExt, FileTypeExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::process::exit;
 use std::vec::Vec;
 
-use clap::Parser;
+use clap::{Parser, ArgEnum};
 use libc::{c_ushort, c_int};
 use libc::{sync_file_range, SYNC_FILE_RANGE_WRITE};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, request_code_none};
 use sensitive::alloc::Sensitive;
+
+#[derive(Clone, Debug, PartialEq, ArgEnum)]
+enum SyncMode {
+	/// Synchronise data at the end
+	#[clap(name = "final")]
+	Final,
+
+	/// Always perform synchronous writes
+	#[clap(name = "always")]
+	Always
+}
 
 #[derive(Parser)]
 #[clap(version = clap::crate_version!(), about = clap::crate_description!())]
@@ -23,6 +34,10 @@ struct Opt {
 	/// Do not overwrite corrupt sectors
 	#[clap(short('n'), long)]
 	dry_run: bool,
+
+	/// Synchronise data to device
+	#[clap(arg_enum, long)]
+	sync: Option<SyncMode>
 }
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
@@ -33,6 +48,7 @@ fn main() -> std::io::Result<()> {
 	let opt = Opt::parse();
 
 	let dev = std::fs::OpenOptions::new()
+	.custom_flags(if let Some(SyncMode::Always) = opt.sync { libc::O_DSYNC } else { 0 })
 	.read(true)
 	.write(!opt.dry_run)
 	.open(&opt.device)
@@ -132,8 +148,10 @@ fn main() -> std::io::Result<()> {
 					assert_eq!(len, ssz);
 
 					// Remember first sector to flush
-					if flush.is_none() {
-						flush = Some(offset);
+					if let None | Some(SyncMode::Final) = opt.sync {
+						if flush.is_none() {
+							flush = Some(offset);
+						}
 					}
 
 					offset += ssz as u64;
@@ -157,6 +175,10 @@ fn main() -> std::io::Result<()> {
 				flush = None;
 			}
 		}
+	}
+
+	if let Some(SyncMode::Final) = opt.sync {
+		dev.sync_data()?;
 	}
 
 	Ok(())
