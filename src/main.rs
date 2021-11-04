@@ -4,6 +4,7 @@ use std::io::Error;
 use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::os::unix::io::AsRawFd;
 use std::process::exit;
+use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use clap::Parser;
@@ -93,13 +94,17 @@ fn main() -> std::io::Result<()> {
 
 	eprintln!();
 
-	let start = std::time::Instant::now();
+	let start = Instant::now();
+	let mut last = start;
 
 	loop {
-		if verify == 0 {
+		let now = Instant::now();
+
+		if verify == 0 && now.duration_since(last) > Duration::from_millis(50) {
 			eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors", offset * 100 / size,
-			          bytesize::to_string(offset, true), bytesize::to_string(size, true), 
-			          bytesize::to_string(offset / std::cmp::max(start.elapsed().as_secs(), 1), true), errors);
+			          bytesize::to_string(offset, true), bytesize::to_string(size, true),
+			          bytesize::to_string(offset / now.duration_since(start).as_secs().max(1), true), errors);
+			last = now;
 		}
 
 		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
