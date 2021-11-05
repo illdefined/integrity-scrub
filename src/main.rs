@@ -1,15 +1,14 @@
-#![feature(allocator_api)]
+#![feature(allocator_api, int_roundings)]
 
-use std::io::Error;
+use std::cell::UnsafeCell;
+use std::io::{Error, Result};
 use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::os::unix::io::AsRawFd;
-use std::process::exit;
 use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use clap::Parser;
 use libc::{c_ushort, c_int};
-use libc::{sync_file_range, SYNC_FILE_RANGE_WRITE};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, request_code_none};
 use sensitive::alloc::Sensitive;
@@ -26,150 +25,369 @@ struct Opt {
 	dry_run: bool
 }
 
+struct Device {
+	file: std::fs::File,
+	sectors: u64,
+	sector_size: usize,
+	maximum_io: u16,
+	null: Vec<u8>,
+	buffer: UnsafeCell<Vec<u8, Sensitive>>
+}
+
+struct Chunk<'t> {
+	device: &'t Device,
+	index: u64,
+	count: u16,
+	valid: bool,
+}
+
+struct ChunkIterator<'t> {
+	device: &'t Device,
+	index: Option<u64>,
+}
+
+struct Sector<'t> {
+	chunk: &'t Chunk<'t>,
+	index: u16,
+	valid: bool
+}
+
+struct SectorIterator<'t> {
+	chunk: &'t Chunk<'t>,
+	index: Option<u16>
+}
+
+struct Progress {
+	total: u64,
+	error: u64,
+	start: Instant,
+	last: Option<Instant>
+}
+
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
-fn rate(size: u64, duration: Duration) -> String {
-	bytesize::to_string((size as u128 * 1000 / duration.as_millis().max(1)) as u64, true)
-}
+impl Device {
+	fn open<P: AsRef<std::path::Path>>(path: P, writable: bool) -> Result<Self> {
+		let file = std::fs::OpenOptions::new()
+			.read(true)
+			.write(writable)
+			.open(path)?;
 
-fn main() -> std::io::Result<()> {
-	let opt = Opt::parse();
-
-	let dev = std::fs::OpenOptions::new()
-	.read(true)
-	.write(!opt.dry_run)
-	.open(&opt.device)
-	.unwrap_or_else(|err| {
-		eprintln!("Failed to open {}: {}", opt.device.display(), err);
-		exit(66);
-	});
-
-	let meta = dev.metadata()?;
-
-	if !meta.file_type().is_block_device() {
-		eprintln!("{} is not a block device", opt.device.display());
-		exit(66);
-	}
-
-	let size = {
-		let mut size = u64::MAX;
-		unsafe { blkgetsize64(dev.as_raw_fd(), &mut size) }?;
-
-		size
-	};
-
-	let ssz = {
-		let mut ssz = -1;
-		unsafe { blksszget(dev.as_raw_fd(), &mut ssz) }?;
-
-		assert!(ssz > 0);
-		ssz as usize
-	};
-
-	let sect = {
-		let mut sect = c_ushort::MAX;
-		unsafe { blksectget(dev.as_raw_fd(), &mut sect) }?;
-
-		assert!(sect > 0);
-		sect as usize
-	};
-
-	// Assert that device size is a multiple of the logical sector size
-	assert!(size % ssz as u64 == 0);
-
-	let null = vec![0u8; ssz];
-	let mut buffer = Vec::with_capacity_in(sect * ssz, Sensitive);
-
-	// The allocator ensures that the memory is zero‐initialised
-	unsafe { buffer.set_len(sect * ssz); }
-
-	for advice in [
-		PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
-		PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
-		posix_fadvise(dev.as_raw_fd(), 0, 0, advice)?;
-	}
-
-	let mut offset = 0u64;
-	let mut verify = 0usize;
-	let mut errors = 0u64;
-	let mut flush: Option<u64> = None;
-
-	eprintln!();
-
-	let start = Instant::now();
-	let mut last = start;
-
-	loop {
-		let now = Instant::now();
-
-		if verify == 0 && now.duration_since(last) > Duration::from_millis(50) {
-			eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors", offset * 100 / size,
-			          bytesize::to_string(offset, true), bytesize::to_string(size, true),
-			          rate(offset, now.duration_since(start)), errors);
-			last = now;
+		if !file.metadata()?.file_type().is_block_device() {
+			use std::io::ErrorKind;
+			return Err(Error::new(ErrorKind::InvalidInput, "File is not a block device"));
 		}
 
-		match dev.read_at(if verify == 0 { &mut buffer } else { &mut buffer[0..ssz] }, offset) {
-			Ok(0) => { break; }
+		let size = {
+			let mut size = u64::MAX;
+			unsafe { blkgetsize64(file.as_raw_fd(), &mut size) }?;
+			size as u64
+		};
+
+		let sector_size = {
+			let mut ssz = -1;
+			unsafe { blksszget(file.as_raw_fd(), &mut ssz) }?;
+			assert!(ssz > 0);
+			ssz as usize
+		};
+
+		// Assert that device size is a multiple of the logical sector size
+		assert!(size % sector_size as u64 == 0);
+
+		let maximum_io = {
+			let mut sect = c_ushort::MAX;
+			unsafe { blksectget(file.as_raw_fd(), &mut sect) }?;
+			assert!(sect > 0);
+			sect as u16
+		};
+
+		let mut buffer = Vec::with_capacity_in(maximum_io as usize * sector_size, Sensitive);
+
+		// The allocator ensures that the memory is zero‐initialised
+		unsafe { buffer.set_len(maximum_io as usize * sector_size); }
+
+		for advice in [
+			PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
+			PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
+			posix_fadvise(file.as_raw_fd(), 0, 0, advice)?;
+		}
+
+		Ok(Self {
+			file,
+			sectors: size / sector_size as u64,
+			sector_size,
+			maximum_io,
+			null: vec![0; sector_size],
+			buffer: UnsafeCell::new(buffer)
+		})
+	}
+
+	fn test(&self, offset: u64, count: u16) -> Result<Option<u16>> {
+		assert!(count <= self.maximum_io);
+
+		// The contents of this buffer are never examined
+		let buffer = unsafe { &mut *self.buffer.get() };
+
+		match self.file.read_at(&mut buffer[..count as usize * self.sector_size], offset * self.sector_size as u64) {
 			Ok(len) => {
 				// Assert that we read a multiple of the sector size
-				assert!(len % ssz == 0);
+				assert!(len % self.sector_size == 0);
 
-				if verify == 0 {
-					posix_fadvise(dev.as_raw_fd(), offset.try_into().unwrap(), len.try_into().unwrap(),
-					              PosixFadviseAdvice::POSIX_FADV_DONTNEED)?;
-				}
-
-				offset += len as u64;
-				verify = verify.saturating_sub(1);
+				Ok(Some((len / self.sector_size) as u16))
 			}
+
 			Err(err) => {
 				if let Some(libc::EIO) = err.raw_os_error() {
-					if verify == 0 {
-						verify = sect;
-						continue;
-					}
-
-					errors += 1;
-
-					let len = if !opt.dry_run {
-						dev.write_at(&null, offset)?
-					} else {
-						null.len()
-					};
-
-					// Assert that we wrote a complete sector
-					assert_eq!(len, ssz);
-
-					// Remember first sector to flush
-					if flush.is_none() {
-						flush = Some(offset);
-					}
-
-					offset += ssz as u64;
-					verify -= 1;
+					Ok(None)
 				} else {
-					return Err(err);
+					Err(err)
 				}
-			}
-		}
-
-		if verify == 0 {
-			if let Some(start) = flush {
-				if unsafe {
-					sync_file_range(dev.as_raw_fd(), start.try_into().unwrap(),
-					                (offset - start).try_into().unwrap(),
-					                SYNC_FILE_RANGE_WRITE)
-				} != 0 {
-					return Err(Error::last_os_error());
-				}
-
-				flush = None;
 			}
 		}
 	}
 
-	dev.sync_data()
+	fn zero(&self, offset: u64) -> Result<()> {
+		let len = self.file.write_at(&self.null, offset * self.sector_size as u64)?;
+		assert!(len == self.sector_size);
+		Ok(())
+	}
+
+	fn flush(&self, offset: u64, count: u16) -> Result<()> {
+		use libc::{sync_file_range, off64_t, SYNC_FILE_RANGE_WRITE};
+
+		if unsafe { sync_file_range(self.file.as_raw_fd(), (offset * self.sector_size as u64) as off64_t,
+			(count as usize * self.sector_size) as off64_t, SYNC_FILE_RANGE_WRITE) } != 0 {
+			Err(Error::last_os_error())
+		} else {
+			Ok(())
+		}
+	}
+
+	fn sync(&self) -> Result<()> {
+		self.file.sync_data()
+	}
+
+	fn release(&self, offset: u64, count: u16) -> Result<()> {
+		use libc::off_t;
+
+		posix_fadvise(self.file.as_raw_fd(), (offset * self.sector_size as u64) as off_t,
+		              (count as usize * self.sector_size) as off_t, PosixFadviseAdvice::POSIX_FADV_DONTNEED)?;
+
+		Ok(())
+	}
+
+	fn chunks(&self) -> u64 {
+		self.sectors.unstable_div_ceil(self.maximum_io as u64)
+	}
+
+	fn iter(&self) -> ChunkIterator {
+		ChunkIterator {
+			device: self,
+			index: None
+		}
+	}
+}
+
+impl Chunk<'_> {
+	fn iter(&self) -> SectorIterator {
+		SectorIterator {
+			chunk: self,
+			index: None
+		}
+	}
+
+	fn flush(&self) -> Result<()> {
+		self.device.flush(self.index, self.count)
+	}
+}
+
+impl Drop for Chunk<'_> {
+	fn drop(&mut self) {
+		self.device.release(self.index, self.count).unwrap()
+	}
+}
+
+impl<'t> Iterator for ChunkIterator<'t> {
+	type Item = Result<Chunk<'t>>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.device.test(self.index.unwrap_or(0), self.device.maximum_io) {
+			Ok(Some(0)) => None,
+			Ok(Some(len)) => {
+				let chunk = Chunk {
+					device: self.device,
+					index: self.index.unwrap_or(0),
+					count: len,
+					valid: true
+				};
+
+				self.index = Some(self.index.unwrap_or(0) + len as u64);
+
+				Some(Ok(chunk))
+			},
+			Ok(None) => {
+				let chunk = Chunk {
+					device: self.device,
+					index: self.index.unwrap_or(0),
+					count: self.device.maximum_io,
+					valid: false
+				};
+
+				self.index = Some(self.index.unwrap_or(0) + self.device.maximum_io as u64);
+
+				Some(Ok(chunk))
+			},
+			Err(err) => Some(Err(err))
+		}
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let rem = self.device.chunks().saturating_sub(self.index.unwrap_or(0))
+		          .unstable_div_ceil(self.device.maximum_io as u64);
+		(rem as usize, rem.try_into().ok())
+	}
+}
+
+impl Sector<'_> {
+	fn absolute(&self) -> u64 {
+		self.chunk.index + self.index as u64
+	}
+
+	fn zero(&self) -> Result<()> {
+		self.chunk.device.zero(self.absolute())
+	}
+}
+
+impl SectorIterator<'_> {
+	fn absolute(&self) -> u64 {
+		self.chunk.index + self.index.unwrap_or(0) as u64
+	}
+}
+
+impl<'t> Iterator for SectorIterator<'t> {
+	type Item = Result<Sector<'t>>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if let Some(index) = self.index {
+			if index >= self.chunk.count {
+				return None;
+			}
+		}
+
+		match self.chunk.device.test(self.absolute(), 1) {
+			Ok(Some(0)) => None,
+			Ok(Some(len)) => {
+				assert_eq!(len, 1);
+				let sector = Sector {
+					chunk: self.chunk,
+					index: self.index.unwrap_or(0),
+					valid: true
+				};
+
+				self.index = Some(self.index.unwrap_or(0) + len);
+
+				Some(Ok(sector))
+			},
+			Ok(None) => {
+				let sector = Sector {
+					chunk: self.chunk,
+					index: self.index.unwrap_or(0),
+					valid: false
+				};
+
+				self.index = Some(self.index.unwrap_or(0) + 1);
+
+				Some(Ok(sector))
+			},
+			Err(err) => Some(Err(err))
+		}
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let rem = std::cmp::min(
+			self.chunk.count.saturating_sub(self.index.unwrap_or(0)) as u64,
+			self.chunk.device.sectors.saturating_sub(self.absolute())
+		);
+		(rem as usize, rem.try_into().ok())
+	}
+}
+
+impl Progress {
+	fn new() -> Self {
+		Self {
+			total: 0,
+			error: 0,
+			start: Instant::now(),
+			last: None
+		}
+	}
+
+	fn rate(size: u64, duration: Duration) -> String {
+		bytesize::to_string((size as u128 * 1000 / duration.as_millis().max(1)) as u64, true)
+	}
+
+	fn print(&mut self, dev: &Device, now: Instant) {
+		eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors",
+		          self.total * 100 / dev.sectors,
+		          bytesize::to_string(self.total * dev.sector_size as u64, true),
+		          bytesize::to_string(dev.sectors * dev.sector_size as u64, true),
+		          Self::rate(self.total * dev.sector_size as u64, now.duration_since(self.start)),
+		          self.error);
+		self.last = Some(now);
+	}
+
+	fn print_now(&mut self, dev: &Device) {
+		self.print(dev, Instant::now());
+	}
+
+	fn print_50(&mut self, dev: &Device) {
+		let now = Instant::now();
+
+		if let Some(last) = self.last {
+			if now.duration_since(last) >= Duration::from_millis(50) {
+				self.print(dev, now);
+			}
+		} else if self.last.is_none() {
+			self.print(dev, now);
+		}
+	}
+}
+
+fn main() -> Result<()> {
+	let opt = Opt::parse();
+	let dev = Device::open(&opt.device, !opt.dry_run)?;
+
+	let mut prog = Progress::new();
+
+	eprintln!();
+	prog.print_now(&dev);
+
+	for chunk in dev.iter() {
+		let chunk = chunk?;
+
+		prog.print_50(&dev);
+
+		if !chunk.valid {
+			for sector in chunk.iter() {
+				let sector = sector?;
+
+				if !sector.valid {
+					prog.error += 1;
+
+					if !opt.dry_run {
+						sector.zero()?;
+					}
+				}
+			}
+
+			chunk.flush()?;
+		}
+
+		prog.total += chunk.count as u64;
+	}
+
+	prog.print_now(&dev);
+	dev.sync()
 }
