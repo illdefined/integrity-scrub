@@ -107,7 +107,7 @@ fn main() -> std::io::Result<()> {
 		if verify == 0 && now.duration_since(last) > Duration::from_millis(50) {
 			eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors", offset * 100 / size,
 			          bytesize::to_string(offset, true), bytesize::to_string(size, true),
-			          rate(offset, last.duration_since(now)), errors);
+			          rate(offset, now.duration_since(start)), errors);
 			last = now;
 		}
 
