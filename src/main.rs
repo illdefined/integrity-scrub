@@ -172,6 +172,15 @@ impl Device {
 		self.file.sync_data()
 	}
 
+	fn acquire(&self, offset: u64, count: u16) -> Result<()> {
+		use libc::off_t;
+
+		posix_fadvise(self.file.as_raw_fd(), (offset * self.sector_size as u64) as off_t,
+		              (count as usize * self.sector_size) as off_t, PosixFadviseAdvice::POSIX_FADV_WILLNEED)?;
+
+		Ok(())
+	}
+
 	fn release(&self, offset: u64, count: u16) -> Result<()> {
 		use libc::off_t;
 
@@ -195,6 +204,7 @@ impl Device {
 
 impl Chunk<'_> {
 	fn iter(&self) -> SectorIterator {
+		self.device.acquire(self.index, self.count).unwrap();
 		SectorIterator {
 			chunk: self,
 			index: None
