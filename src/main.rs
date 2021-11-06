@@ -8,9 +8,9 @@ use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use clap::Parser;
-use libc::{c_ushort, c_int};
+use libc::{c_ushort, c_int, size_t};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
-use nix::{ioctl_read, ioctl_read_bad, request_code_none};
+use nix::{ioctl_read, ioctl_read_bad, ioctl_write_ptr, request_code_none};
 use sensitive::alloc::Sensitive;
 
 #[derive(Parser)]
@@ -66,6 +66,7 @@ struct Progress {
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+ioctl_write_ptr!(blkbszset, 0x12, 113, size_t);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
 impl Device {
@@ -95,6 +96,8 @@ impl Device {
 
 		// Assert that device size is a multiple of the logical sector size
 		assert!(size % sector_size as u64 == 0);
+
+		unsafe { blkbszset(file.as_raw_fd(), &sector_size) }?;
 
 		let maximum_io = {
 			let mut sect = c_ushort::MAX;
