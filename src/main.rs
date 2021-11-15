@@ -11,6 +11,7 @@ use clap::Parser;
 use libc::{c_ushort, c_int, size_t};
 use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, ioctl_write_ptr, request_code_none};
+use nix::unistd::isatty;
 use sensitive::alloc::Sensitive;
 
 #[derive(Parser)]
@@ -69,7 +70,8 @@ struct Progress {
 	total: u64,
 	error: u64,
 	start: Instant,
-	last: Option<Instant>
+	last: Option<Instant>,
+	tty: bool
 }
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
@@ -336,13 +338,14 @@ impl<'t> Iterator for SectorIterator<'t> {
 }
 
 impl Progress {
-	fn new() -> Self {
-		Self {
+	fn new() -> Result<Self> {
+		Ok(Self {
 			total: 0,
 			error: 0,
 			start: Instant::now(),
-			last: None
-		}
+			last: None,
+			tty: isatty(2)?
+		})
 	}
 
 	fn rate(size: u64, duration: Duration) -> String {
@@ -350,7 +353,11 @@ impl Progress {
 	}
 
 	fn print(&mut self, dev: &Device, now: Instant) {
-		eprintln!("\x1bM\x1b[K{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors",
+		if self.tty {
+			eprint!("\x1bM\x1b[K");
+		}
+
+		eprintln!("{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors",
 		          self.total * 100 / dev.sectors,
 		          bytesize::to_string(self.total * dev.sector_size as u64, true),
 		          bytesize::to_string(dev.sectors * dev.sector_size as u64, true),
@@ -380,7 +387,7 @@ fn main() -> Result<()> {
 	let opt = Opt::parse();
 	let dev = Device::open(&opt.device, !opt.dry_run)?;
 
-	let mut prog = Progress::new();
+	let mut prog = Progress::new()?;
 
 	if !opt.quiet {
 		eprintln!();
