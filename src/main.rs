@@ -26,7 +26,11 @@ struct Opt {
 
 	/// Disable progress reporting
 	#[clap(short, long)]
-	quiet: bool
+	quiet: bool,
+
+	/// Write corrupted sector numbers to standard output
+	#[clap(long)]
+	sector_numbers: bool
 }
 
 struct Device {
@@ -396,6 +400,10 @@ fn main() -> Result<()> {
 
 				if !sector.valid {
 					prog.error += 1;
+
+					if opt.sector_numbers {
+						println!("{}", sector.absolute());
+					}
 
 					if !opt.dry_run {
 						sector.zero()?;
