@@ -22,7 +22,11 @@ struct Opt {
 
 	/// Do not overwrite corrupt sectors
 	#[clap(short('n'), long)]
-	dry_run: bool
+	dry_run: bool,
+
+	/// Disable progress reporting
+	#[clap(short, long)]
+	quiet: bool
 }
 
 struct Device {
@@ -374,13 +378,17 @@ fn main() -> Result<()> {
 
 	let mut prog = Progress::new();
 
-	eprintln!();
-	prog.print_now(&dev);
+	if !opt.quiet {
+		eprintln!();
+		prog.print_now(&dev);
+	}
 
 	for chunk in dev.iter() {
 		let chunk = chunk?;
 
-		prog.print_50(&dev);
+		if !opt.quiet {
+			prog.print_50(&dev);
+		}
 
 		if !chunk.valid {
 			for sector in chunk.iter() {
@@ -401,6 +409,9 @@ fn main() -> Result<()> {
 		prog.total += chunk.count as u64;
 	}
 
-	prog.print_now(&dev);
+	if !opt.quiet {
+		prog.print_now(&dev);
+	}
+
 	dev.sync()
 }
