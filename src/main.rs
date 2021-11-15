@@ -1,7 +1,7 @@
 #![feature(allocator_api, int_roundings)]
 
 use std::cell::UnsafeCell;
-use std::io::{Error, Result};
+use std::io::{Error, Result, stderr};
 use std::os::unix::fs::{FileExt, FileTypeExt};
 use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
@@ -344,7 +344,7 @@ impl Progress {
 			error: 0,
 			start: Instant::now(),
 			last: None,
-			tty: isatty(2)?
+			tty: isatty(stderr().as_raw_fd())?
 		})
 	}
 
