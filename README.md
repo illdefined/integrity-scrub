@@ -22,5 +22,5 @@ results in an I/O error is overwritten with zeros.
 
 This tool might delete all your data and summon a seal. Use it at your own risk. The seal will demand fish.
 
-If you are not using a filesystem with copy‐on‐write semantics or data journalling, you should probably rely on
-dm-integrity’s data journal.
+If you are not using a filesystem with copy‐on‐write semantics (e.g. btrfs) or data journalling (e.g. ext4 with
+`data=journal`), you should probably rely on dm-integrity’s data journal.
