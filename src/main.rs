@@ -2,14 +2,13 @@
 
 use std::cell::UnsafeCell;
 use std::io::{Error, Result, stderr};
-use std::os::unix::fs::{FileExt, FileTypeExt};
+use std::os::unix::fs::{FileExt, FileTypeExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
 use std::vec::Vec;
 
 use clap::Parser;
 use libc::{c_ushort, c_int, size_t};
-use nix::fcntl::{posix_fadvise, PosixFadviseAdvice};
 use nix::{ioctl_read, ioctl_read_bad, ioctl_write_ptr, request_code_none};
 use nix::unistd::isatty;
 use sensitive::alloc::Sensitive;
@@ -89,6 +88,7 @@ impl Device {
 		let file = std::fs::OpenOptions::new()
 			.read(true)
 			.write(writable)
+			.custom_flags(libc::O_DIRECT)
 			.open(path)?;
 
 		if !file.metadata()?.file_type().is_block_device() {
@@ -134,12 +134,6 @@ impl Device {
 
 		// The allocator ensures that the memory is zero‐initialised
 		unsafe { buffer.set_len(maximum_io as usize * sector_size); }
-
-		for advice in [
-			PosixFadviseAdvice::POSIX_FADV_SEQUENTIAL,
-			PosixFadviseAdvice::POSIX_FADV_WILLNEED] {
-			posix_fadvise(file.as_raw_fd(), 0, 0, advice)?;
-		}
 
 		Ok(Self {
 			file,
@@ -196,24 +190,6 @@ impl Device {
 		self.file.sync_data()
 	}
 
-	fn acquire(&self, offset: u64, count: u16) -> Result<()> {
-		use libc::off_t;
-
-		posix_fadvise(self.file.as_raw_fd(), (offset * self.sector_size as u64) as off_t,
-		              (count as usize * self.sector_size) as off_t, PosixFadviseAdvice::POSIX_FADV_WILLNEED)?;
-
-		Ok(())
-	}
-
-	fn release(&self, offset: u64, count: u16) -> Result<()> {
-		use libc::off_t;
-
-		posix_fadvise(self.file.as_raw_fd(), (offset * self.sector_size as u64) as off_t,
-		              (count as usize * self.sector_size) as off_t, PosixFadviseAdvice::POSIX_FADV_DONTNEED)?;
-
-		Ok(())
-	}
-
 	fn chunks(&self) -> u64 {
 		self.sectors.unstable_div_ceil(self.maximum_io as u64)
 	}
@@ -228,7 +204,6 @@ impl Device {
 
 impl Chunk<'_> {
 	fn iter(&self) -> SectorIterator {
-		self.device.acquire(self.index, self.count).unwrap();
 		SectorIterator {
 			chunk: self,
 			index: None
@@ -237,12 +212,6 @@ impl Chunk<'_> {
 
 	fn flush(&self) -> Result<()> {
 		self.device.flush(self.index, self.count)
-	}
-}
-
-impl Drop for Chunk<'_> {
-	fn drop(&mut self) {
-		self.device.release(self.index, self.count).unwrap()
 	}
 }
 
