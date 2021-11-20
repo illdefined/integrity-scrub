@@ -12,6 +12,7 @@ categories = [ "command-line-utilities" ]
 [dependencies]
 bytesize = "1.1"
 clap = "3.0.0-beta"
+ioprio = "0.2"
 libc = "0.2"
 nix = "0.23"
 sensitive = { version = "0.9", default-features = false }

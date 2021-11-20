@@ -21,6 +21,10 @@ struct Opt {
 	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
 	device: std::path::PathBuf,
 
+	/// Set idle I/O scheduling class
+	#[clap(short, long)]
+	idle: bool,
+
 	/// Do not overwrite corrupt sectors
 	#[clap(short('n'), long)]
 	dry_run: bool,
@@ -385,6 +389,12 @@ impl Progress {
 
 fn main() -> Result<()> {
 	let opt = Opt::parse();
+
+	if opt.idle {
+		use ioprio::{set_priority, Target, Pid, Priority, Class};
+		set_priority(Target::Process(Pid::this()), Priority::new(Class::Idle)).unwrap();
+	}
+
 	let dev = Device::open(&opt.device, !opt.dry_run)?;
 
 	let mut prog = Progress::new()?;
