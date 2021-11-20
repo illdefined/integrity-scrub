@@ -80,6 +80,7 @@ struct Progress {
 
 ioctl_read_bad!(blksectget, request_code_none!(0x12, 103), c_ushort);
 ioctl_read_bad!(blksszget, request_code_none!(0x12, 104), c_int);
+ioctl_read!(blkbszget, 0x12, 112, size_t);
 ioctl_write_ptr!(blkbszset, 0x12, 113, size_t);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
@@ -111,7 +112,16 @@ impl Device {
 		// Assert that device size is a multiple of the logical sector size
 		assert!(size % sector_size as u64 == 0);
 
-		unsafe { blkbszset(file.as_raw_fd(), &sector_size) }?;
+		let block_size = {
+			let mut bsz = 0;
+			unsafe { blkbszget(file.as_raw_fd(), &mut bsz) }?;
+			assert!(bsz > 0);
+			bsz as usize
+		};
+
+		if block_size != sector_size {
+			unsafe { blkbszset(file.as_raw_fd(), &sector_size) }?;
+		}
 
 		let maximum_io = {
 			let mut sect = c_ushort::MAX;
