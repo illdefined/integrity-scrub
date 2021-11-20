@@ -97,13 +97,13 @@ impl Device {
 		}
 
 		let size = {
-			let mut size = u64::MAX;
+			let mut size = 0;
 			unsafe { blkgetsize64(file.as_raw_fd(), &mut size) }?;
 			size as u64
 		};
 
 		let sector_size = {
-			let mut ssz = -1;
+			let mut ssz = 0;
 			unsafe { blksszget(file.as_raw_fd(), &mut ssz) }?;
 			assert!(ssz > 0);
 			ssz as usize
@@ -124,7 +124,7 @@ impl Device {
 		}
 
 		let maximum_io = {
-			let mut sect = c_ushort::MAX;
+			let mut sect = 0;
 			unsafe { blksectget(file.as_raw_fd(), &mut sect) }?;
 			assert!(sect > 0);
 			sect as u16
