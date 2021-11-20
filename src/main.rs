@@ -29,9 +29,9 @@ struct Opt {
 	#[clap(short, long)]
 	quiet: bool,
 
-	/// Write corrupted sector numbers to standard output
-	#[clap(long)]
-	sector_numbers: bool
+	/// Enumerate corrupt sectors to standard output
+	#[clap(short, long)]
+	enumerate: bool
 }
 
 struct Device {
@@ -408,7 +408,7 @@ fn main() -> Result<()> {
 				if !sector.valid {
 					prog.error += 1;
 
-					if opt.sector_numbers {
+					if opt.enumerate {
 						println!("{}", sector.absolute());
 					}
 
