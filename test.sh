@@ -106,3 +106,5 @@ for sector_size in 512 1024 2048 4096; do
 	trap - EXIT HUP INT QUIT TERM
 	echo
 done
+
+msg "All tests passed successfully"
