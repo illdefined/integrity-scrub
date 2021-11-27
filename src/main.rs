@@ -86,9 +86,9 @@ ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
 impl Device {
 	fn open<P: AsRef<std::path::Path>>(path: P, writable: bool) -> Result<Self> {
-		let direct = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECT).open(&path)?;
+		let direct = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECT).open(path)?;
 		let buffered = if writable {
-			Some(std::fs::OpenOptions::new().write(true).open(&path)?)
+			Some(std::fs::OpenOptions::new().write(true).open(format!("/proc/self/fd/{}", direct.as_raw_fd()))?)
 		} else {
 			None
 		};
