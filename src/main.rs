@@ -160,7 +160,7 @@ impl Device {
 			}
 
 			Err(err) => {
-				if let Some(libc::EIO) = err.raw_os_error() {
+				if let Some(libc::EILSEQ) = err.raw_os_error() {
 					Ok(None)
 				} else {
 					Err(err)
