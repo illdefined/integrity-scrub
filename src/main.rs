@@ -38,7 +38,8 @@ struct Opt {
 }
 
 struct Device {
-	file: std::fs::File,
+	direct: std::fs::File,
+	buffered: Option<std::fs::File>,
 	sectors: u64,
 	sector_size: usize,
 	maximum_io: u16,
@@ -85,26 +86,27 @@ ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
 impl Device {
 	fn open<P: AsRef<std::path::Path>>(path: P, writable: bool) -> Result<Self> {
-		let file = std::fs::OpenOptions::new()
-			.read(true)
-			.write(writable)
-			.custom_flags(libc::O_DIRECT)
-			.open(path)?;
+		let direct = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECT).open(&path)?;
+		let buffered = if writable {
+			Some(std::fs::OpenOptions::new().write(true).open(&path)?)
+		} else {
+			None
+		};
 
-		if !file.metadata()?.file_type().is_block_device() {
+		if !direct.metadata()?.file_type().is_block_device() {
 			use std::io::ErrorKind;
 			return Err(Error::new(ErrorKind::InvalidInput, "File is not a block device"));
 		}
 
 		let size = {
 			let mut size = 0;
-			unsafe { blkgetsize64(file.as_raw_fd(), &mut size) }?;
+			unsafe { blkgetsize64(direct.as_raw_fd(), &mut size) }?;
 			size as u64
 		};
 
 		let sector_size = {
 			let mut ssz = 0;
-			unsafe { blksszget(file.as_raw_fd(), &mut ssz) }?;
+			unsafe { blksszget(direct.as_raw_fd(), &mut ssz) }?;
 			assert!(ssz > 0);
 			ssz as usize
 		};
@@ -114,18 +116,22 @@ impl Device {
 
 		let block_size = {
 			let mut bsz = 0;
-			unsafe { blkbszget(file.as_raw_fd(), &mut bsz) }?;
+			unsafe { blkbszget(direct.as_raw_fd(), &mut bsz) }?;
 			assert!(bsz > 0);
 			bsz as usize
 		};
 
 		if block_size != sector_size {
-			unsafe { blkbszset(file.as_raw_fd(), &sector_size) }?;
+			unsafe { blkbszset(direct.as_raw_fd(), &sector_size) }?;
+
+			if let Some(ref file) = buffered {
+				unsafe { blkbszset(file.as_raw_fd(), &sector_size) }?;
+			}
 		}
 
 		let maximum_io = {
 			let mut sect = 0;
-			unsafe { blksectget(file.as_raw_fd(), &mut sect) }?;
+			unsafe { blksectget(direct.as_raw_fd(), &mut sect) }?;
 			assert!(sect > 0);
 			sect as u16
 		};
@@ -136,7 +142,8 @@ impl Device {
 		unsafe { buffer.set_len(maximum_io as usize * sector_size); }
 
 		Ok(Self {
-			file,
+			direct,
+			buffered,
 			sectors: size / sector_size as u64,
 			sector_size,
 			maximum_io,
@@ -151,7 +158,7 @@ impl Device {
 		// The contents of this buffer are never examined
 		let buffer = unsafe { &mut *self.buffer.get() };
 
-		match self.file.read_at(&mut buffer[..count as usize * self.sector_size], offset * self.sector_size as u64) {
+		match self.direct.read_at(&mut buffer[..count as usize * self.sector_size], offset * self.sector_size as u64) {
 			Ok(len) => {
 				// Assert that we read a multiple of the sector size
 				assert!(len % self.sector_size == 0);
@@ -170,24 +177,30 @@ impl Device {
 	}
 
 	fn zero(&self, offset: u64) -> Result<()> {
-		let len = self.file.write_at(&self.null, offset * self.sector_size as u64)?;
-		assert!(len == self.sector_size);
-		Ok(())
+		self.buffered.as_ref().unwrap().write_all_at(&self.null, offset * self.sector_size as u64)
 	}
 
 	fn flush(&self, offset: u64, count: u16) -> Result<()> {
 		use libc::{sync_file_range, off64_t, SYNC_FILE_RANGE_WRITE};
 
-		if unsafe { sync_file_range(self.file.as_raw_fd(), (offset * self.sector_size as u64) as off64_t,
-			(count as usize * self.sector_size) as off64_t, SYNC_FILE_RANGE_WRITE) } != 0 {
-			Err(Error::last_os_error())
+		if let Some(ref file) = self.buffered {
+			if unsafe { sync_file_range(file.as_raw_fd(), (offset * self.sector_size as u64) as off64_t,
+				(count as usize * self.sector_size) as off64_t, SYNC_FILE_RANGE_WRITE) } != 0 {
+				Err(Error::last_os_error())
+			} else {
+				Ok(())
+			}
 		} else {
 			Ok(())
 		}
 	}
 
 	fn sync(&self) -> Result<()> {
-		self.file.sync_data()
+		if let Some(ref file) = self.buffered {
+			file.sync_data()
+		} else {
+			Ok(())
+		}
 	}
 
 	fn chunks(&self) -> u64 {
