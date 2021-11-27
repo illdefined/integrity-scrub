@@ -14,7 +14,7 @@ perform() {
 	echo
 
 	msg "Scrub dry run, expecting lots of corrupt sectors"
-	target/debug/integrity-scrub -n "/dev/mapper/$dm"
+	"target/$profile/integrity-scrub" -n "/dev/mapper/$dm"
 	echo
 
 	msg "Attempting read, expecting failure"
@@ -24,7 +24,7 @@ perform() {
 	echo
 
 	msg "Scrub, expecting lots of corrupt sectors"
-	target/debug/integrity-scrub "/dev/mapper/$dm"
+	"target/$profile/integrity-scrub" "/dev/mapper/$dm"
 	echo
 
 	msg "Attempting read, expecting success"
@@ -32,7 +32,7 @@ perform() {
 	echo
 
 	msg "Scrub again, expecting no corrupt sectors"
-	target/debug/integrity-scrub "/dev/mapper/$dm"
+	"target/$profile/integrity-scrub" "/dev/mapper/$dm"
 	echo
 
 	msg "Trying to corrupt single sector"
@@ -48,7 +48,7 @@ perform() {
 	echo
 
 	msg "Scrub, expecting single corrupt sector"
-	target/debug/integrity-scrub "/dev/mapper/$dm"
+	"target/$profile/integrity-scrub" "/dev/mapper/$dm"
 	echo
 
 	msg "Attemping to read, expecting success"
@@ -56,9 +56,11 @@ perform() {
 	echo
 }
 
+profile="${profile:-debug}"
+
 for sector_size in 512 1024 2048 4096; do
 	device_size="$((sector_size))"
-	msg "Sector size $sector_size, device size $device_size MiB"
+	msg "Profile $profile, sector size $sector_size, device size $device_size MiB"
 
 	tmp="$(mktemp)"
 	trap 'rm -f -- "$tmp"' EXIT HUP INT QUIT TERM
