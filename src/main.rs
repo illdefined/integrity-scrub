@@ -15,6 +15,7 @@ use sensitive::alloc::Sensitive;
 
 #[derive(Parser)]
 #[clap(version = clap::crate_version!(), about = clap::crate_description!())]
+#[allow(clippy::struct_excessive_bools)]
 struct Opt {
 	/// Device path
 	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
