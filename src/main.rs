@@ -102,14 +102,14 @@ impl Device {
 		let size = {
 			let mut size = 0;
 			unsafe { blkgetsize64(direct.as_raw_fd(), &mut size) }?;
-			size as u64
+			size
 		};
 
 		let sector_size = {
 			let mut ssz = 0;
 			unsafe { blksszget(direct.as_raw_fd(), &mut ssz) }?;
 			assert!(ssz > 0);
-			ssz as usize
+			usize::try_from(ssz).unwrap()
 		};
 
 		// Assert that device size is a multiple of the logical sector size
@@ -119,7 +119,7 @@ impl Device {
 			let mut bsz = 0;
 			unsafe { blkbszget(direct.as_raw_fd(), &mut bsz) }?;
 			assert!(bsz > 0);
-			bsz as usize
+			bsz
 		};
 
 		if block_size != sector_size {
@@ -134,7 +134,7 @@ impl Device {
 			let mut sect = 0;
 			unsafe { blksectget(direct.as_raw_fd(), &mut sect) }?;
 			assert!(sect > 0);
-			sect as u16
+			sect
 		};
 
 		let mut buffer = Vec::with_capacity_in(maximum_io as usize * sector_size, Sensitive);
@@ -164,7 +164,7 @@ impl Device {
 				// Assert that we read a multiple of the sector size
 				assert!(len % self.sector_size == 0);
 
-				Ok(Some((len / self.sector_size) as u16))
+				Ok(Some(u16::try_from(len / self.sector_size).unwrap()))
 			}
 
 			Err(err) => {
@@ -185,7 +185,8 @@ impl Device {
 		use libc::{sync_file_range, off64_t, SYNC_FILE_RANGE_WRITE};
 
 		if let Some(ref file) = self.buffered {
-			if unsafe { sync_file_range(file.as_raw_fd(), (offset * self.sector_size as u64) as off64_t,
+			if unsafe { sync_file_range(file.as_raw_fd(),
+				off64_t::try_from(offset * u64::try_from(self.sector_size).unwrap()).unwrap(),
 				(count as usize * self.sector_size) as off64_t, SYNC_FILE_RANGE_WRITE) } != 0 {
 				Err(Error::last_os_error())
 			} else {
@@ -205,7 +206,7 @@ impl Device {
 	}
 
 	fn chunks(&self) -> u64 {
-		self.sectors.unstable_div_ceil(self.maximum_io as u64)
+		self.sectors.unstable_div_ceil(u64::from(self.maximum_io))
 	}
 
 	fn iter(&self) -> ChunkIterator {
@@ -243,7 +244,7 @@ impl<'t> Iterator for ChunkIterator<'t> {
 					valid: true
 				};
 
-				self.index = Some(self.index.unwrap_or(0) + len as u64);
+				self.index = Some(self.index.unwrap_or(0) + u64::from(len));
 
 				Some(Ok(chunk))
 			},
@@ -255,7 +256,7 @@ impl<'t> Iterator for ChunkIterator<'t> {
 					valid: false
 				};
 
-				self.index = Some(self.index.unwrap_or(0) + self.device.maximum_io as u64);
+				self.index = Some(self.index.unwrap_or(0) + u64::from(self.device.maximum_io));
 
 				Some(Ok(chunk))
 			},
@@ -265,14 +266,15 @@ impl<'t> Iterator for ChunkIterator<'t> {
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let rem = self.device.chunks().saturating_sub(self.index.unwrap_or(0))
-		          .unstable_div_ceil(self.device.maximum_io as u64);
+		          .unstable_div_ceil(u64::from(self.device.maximum_io));
+		#[allow(clippy::cast_possible_truncation)]
 		(rem as usize, rem.try_into().ok())
 	}
 }
 
 impl Sector<'_> {
 	fn absolute(&self) -> u64 {
-		self.chunk.index + self.index as u64
+		self.chunk.index + u64::from(self.index)
 	}
 
 	fn zero(&self) -> Result<()> {
@@ -282,7 +284,7 @@ impl Sector<'_> {
 
 impl SectorIterator<'_> {
 	fn absolute(&self) -> u64 {
-		self.chunk.index + self.index.unwrap_or(0) as u64
+		self.chunk.index + u64::from(self.index.unwrap_or(0))
 	}
 }
 
@@ -327,9 +329,10 @@ impl<'t> Iterator for SectorIterator<'t> {
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let rem = std::cmp::min(
-			self.chunk.count.saturating_sub(self.index.unwrap_or(0)) as u64,
+			u64::from(self.chunk.count.saturating_sub(self.index.unwrap_or(0))),
 			self.chunk.device.sectors.saturating_sub(self.absolute())
 		);
+		#[allow(clippy::cast_possible_truncation)]
 		(rem as usize, rem.try_into().ok())
 	}
 }
@@ -346,7 +349,7 @@ impl Progress {
 	}
 
 	fn rate(size: u64, duration: Duration) -> String {
-		bytesize::to_string((size as u128 * 1000 / duration.as_millis().max(1)) as u64, true)
+		bytesize::to_string(u64::try_from(u128::from(size) * 1000 / duration.as_millis().max(1)).unwrap(), true)
 	}
 
 	fn print(&mut self, dev: &Device, now: Instant) {
@@ -424,7 +427,7 @@ fn main() -> Result<()> {
 			chunk.flush()?;
 		}
 
-		prog.total += chunk.count as u64;
+		prog.total += u64::from(chunk.count);
 	}
 
 	if !opt.quiet {
