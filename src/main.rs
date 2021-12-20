@@ -187,10 +187,10 @@ impl Device {
 		if let Some(ref file) = self.buffered {
 			if unsafe { sync_file_range(file.as_raw_fd(),
 				off64_t::try_from(offset * u64::try_from(self.sector_size).unwrap()).unwrap(),
-				(count as usize * self.sector_size) as off64_t, SYNC_FILE_RANGE_WRITE) } != 0 {
-				Err(Error::last_os_error())
-			} else {
+				(count as usize * self.sector_size) as off64_t, SYNC_FILE_RANGE_WRITE) } == 0 {
 				Ok(())
+			} else {
+				Err(Error::last_os_error())
 			}
 		} else {
 			Ok(())
