@@ -206,7 +206,7 @@ impl Device {
 	}
 
 	fn chunks(&self) -> u64 {
-		self.sectors.unstable_div_ceil(u64::from(self.maximum_io))
+		self.sectors.div_ceil(u64::from(self.maximum_io))
 	}
 
 	fn iter(&self) -> ChunkIterator {
@@ -266,7 +266,7 @@ impl<'t> Iterator for ChunkIterator<'t> {
 
 	fn size_hint(&self) -> (usize, Option<usize>) {
 		let rem = self.device.chunks().saturating_sub(self.index.unwrap_or(0))
-		          .unstable_div_ceil(u64::from(self.device.maximum_io));
+		          .div_ceil(u64::from(self.device.maximum_io));
 		#[allow(clippy::cast_possible_truncation)]
 		(rem as usize, rem.try_into().ok())
 	}
