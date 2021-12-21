@@ -1,6 +1,6 @@
 [package]
 name = "integrity-scrub"
-version = "0.5.4"
+version = "0.5.5"
 authors = [ "Mikael Voss <mvs@nyantec.com>" ]
 edition = "2021"
 description = "Scrub dm-integrity volumes"
