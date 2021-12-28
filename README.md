@@ -15,8 +15,8 @@ might get overwritten by interleaved writes of the tool.
 ## Implementation notes
 
 The block device is first read in large chunks (the maximum sectors per request as reported by the `BLKSECTGET` ioctl).
-If a read results in an I/O error (`EIO`), the logical sectors in the chunk are read individually and any sector that
-results in an I/O error is overwritten with zeros.
+If a read results in an integrity error (`EILSEQ`), the logical sectors in the chunk are read individually and any
+erroneous sector is overwritten with zeros.
 
 ## Caveat
 
