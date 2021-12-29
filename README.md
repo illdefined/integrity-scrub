@@ -18,6 +18,9 @@ The block device is first read in large chunks (the maximum sectors per request 
 If a read results in an integrity error (`EILSEQ`), the logical sectors in the chunk are read individually and any
 erroneous sector is overwritten with zeros.
 
+Reads are performed using direct I/O (`O_DIRECT`), while writes rely on buffered I/O with chunk‐wise asynchronous
+flushing (`sync_file_range(2)`). Any outstanding writes are finalised using `fdatasync(3)` before the tool exits.
+
 ## Caveat
 
 This tool might delete all your data and summon a seal. Use it at your own risk. The seal will demand fish.
