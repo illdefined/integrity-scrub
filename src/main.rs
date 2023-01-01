@@ -28,6 +28,10 @@ struct Opt {
 	#[arg(short('n'), long)]
 	dry_run: bool,
 
+	/// Force operation even if device is busy
+	#[arg(short, long)]
+	force: bool,
+
 	/// Disable progress reporting
 	#[arg(short, long)]
 	quiet: bool,
@@ -85,8 +89,9 @@ ioctl_write_ptr!(blkbszset, 0x12, 113, size_t);
 ioctl_read!(blkgetsize64, 0x12, 114, u64);
 
 impl Device {
-	fn open<P: AsRef<std::path::Path>>(path: P, writable: bool) -> Result<Self> {
-		let direct = std::fs::OpenOptions::new().read(true).custom_flags(libc::O_DIRECT).open(path)?;
+	fn open<P: AsRef<std::path::Path>>(path: P, writable: bool, exclusive: bool) -> Result<Self> {
+		let direct = std::fs::OpenOptions::new().read(true)
+			.custom_flags(libc::O_DIRECT | if exclusive { libc::O_EXCL } else { 0 }).open(path)?;
 		let buffered = if writable {
 			Some(std::fs::OpenOptions::new().write(true).open(format!("/proc/self/fd/{}", direct.as_raw_fd()))?)
 		} else {
@@ -390,7 +395,7 @@ fn main() -> Result<()> {
 		set_priority(Target::Process(Pid::this()), Priority::new(Class::Idle)).unwrap();
 	}
 
-	let dev = Device::open(&opt.device, !opt.dry_run)?;
+	let dev = Device::open(&opt.device, !opt.dry_run, !opt.force)?;
 
 	let mut prog = Progress::new()?;
 
