@@ -14,27 +14,26 @@ use nix::unistd::isatty;
 use sensitive::alloc::Sensitive;
 
 #[derive(Parser)]
-#[clap(version = clap::crate_version!(), about = clap::crate_description!())]
+#[command(version, about)]
 #[allow(clippy::struct_excessive_bools)]
 struct Opt {
 	/// Device path
-	#[clap(parse(from_os_str), value_hint = clap::ValueHint::FilePath)]
 	device: std::path::PathBuf,
 
 	/// Set idle I/O scheduling class
-	#[clap(short, long)]
+	#[arg(short, long)]
 	idle: bool,
 
 	/// Do not overwrite corrupt sectors
-	#[clap(short('n'), long)]
+	#[arg(short('n'), long)]
 	dry_run: bool,
 
 	/// Disable progress reporting
-	#[clap(short, long)]
+	#[arg(short, long)]
 	quiet: bool,
 
 	/// Enumerate corrupt sectors to standard output
-	#[clap(short, long)]
+	#[arg(short, long)]
 	enumerate: bool
 }
 
