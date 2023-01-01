@@ -107,7 +107,7 @@ dependencies = [
 
 [[package]]
 name = "integrity-scrub"
-version = "0.5.10"
+version = "0.6.0"
 dependencies = [
  "bytesize",
  "clap",
