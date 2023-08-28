@@ -1,4 +1,4 @@
-#![feature(allocator_api, int_roundings)]
+#![feature(allocator_api)]
 
 use std::cell::UnsafeCell;
 use std::io::{Error, Result, IsTerminal, stderr};
