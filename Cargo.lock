@@ -230,9 +230,9 @@ dependencies = [
 
 [[package]]
 name = "sensitive"
-version = "0.10.2"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56201a564c6f2aa5c5fa9f1ecb100332aaa7d13aaa2cdbe7fae991a818816c67"
+checksum = "196d6c8c59276a61b68d71143f6b3b406a23528710a1b2f5d14c3d62fd81d1cb"
 dependencies = [
  "libc",
  "winapi",
