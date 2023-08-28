@@ -1,7 +1,7 @@
 #![feature(allocator_api, int_roundings)]
 
 use std::cell::UnsafeCell;
-use std::io::{Error, Result, stderr};
+use std::io::{Error, Result, IsTerminal, stderr};
 use std::os::unix::fs::{FileExt, FileTypeExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
@@ -10,7 +10,6 @@ use std::vec::Vec;
 use clap::Parser;
 use libc::{c_ushort, c_int, size_t};
 use nix::{ioctl_read, ioctl_read_bad, ioctl_write_ptr, request_code_none};
-use nix::unistd::isatty;
 use sensitive::alloc::Sensitive;
 
 #[derive(Parser)]
@@ -348,7 +347,7 @@ impl Progress {
 			error: 0,
 			start: Instant::now(),
 			last: None,
-			tty: isatty(stderr().as_raw_fd())?
+			tty: stderr().is_terminal()
 		})
 	}
 
