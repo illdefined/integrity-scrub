@@ -118,19 +118,20 @@ impl Device {
 		// Assert that device size is a multiple of the logical sector size
 		assert!(size % sector_size as u64 == 0);
 
-		let block_size = {
+		fn block_size(file: &std::fs::File) -> Result<usize> {
 			let mut bsz = 0;
-			unsafe { blkbszget(direct.as_raw_fd(), &mut bsz) }?;
+			unsafe { blkbszget(file.as_raw_fd(), &mut bsz) }?;
 			assert!(bsz > 0);
-			bsz
-		};
+			Ok(bsz)
+		}
 
-		if block_size != sector_size {
+		if block_size(&direct)? != sector_size {
 			unsafe { blkbszset(direct.as_raw_fd(), &sector_size) }?;
+		}
 
-			if let Some(ref file) = buffered {
-				unsafe { blkbszset(file.as_raw_fd(), &sector_size) }?;
-			}
+		// Assert that block size change affects buffered descriptor
+		if let Some(ref file) = buffered {
+			assert_eq!(block_size(&file)?, sector_size);
 		}
 
 		let maximum_io = {
