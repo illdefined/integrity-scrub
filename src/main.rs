@@ -5,7 +5,6 @@ use std::io::{Error, Result, IsTerminal, stderr};
 use std::os::unix::fs::{FileExt, FileTypeExt, OpenOptionsExt};
 use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
-use std::vec::Vec;
 
 use clap::Parser;
 use libc::{c_ushort, c_int, size_t};
