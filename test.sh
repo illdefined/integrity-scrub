@@ -35,10 +35,10 @@ perform() {
 	"target/$profile/integrity-scrub" "/dev/mapper/$dm"
 	echo
 
-	msg "Trying to corrupt single sector"
+	msg "Trying to corrupt data"
 	blockdev --flushbufs "/dev/mapper/$dm"
 	blockdev --flushbufs "$loop"
-	dd if=/dev/urandom of="$loop" bs=16 count=1 seek="$((device_size / 16 / 4))MiB" conv=fdatasync
+	dd if=/dev/urandom of="$loop" bs=1MiB count="$((device_size - 16))" seek=16 conv=fdatasync
 	echo
 
 	msg "Attemping to read, expecting failure"
