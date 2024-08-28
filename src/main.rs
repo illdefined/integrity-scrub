@@ -130,7 +130,7 @@ impl Device {
 
 		// Assert that block size change affects buffered descriptor
 		if let Some(ref file) = buffered {
-			assert_eq!(block_size(&file)?, sector_size);
+			assert_eq!(block_size(file)?, sector_size);
 		}
 
 		let maximum_io = {
