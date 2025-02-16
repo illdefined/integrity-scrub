@@ -5,7 +5,7 @@ authors = [ "Mikael Voss <mvs@nyantec.com>" ]
 edition = "2021"
 description = "Scrub dm-integrity volumes"
 repository = "https://github.com/illdefined/integrity-scrub"
-license = "MirOS"
+license = "CC0-1.0"
 keywords = [ "linux", "utility", "system" ]
 categories = [ "command-line-utilities" ]
 
