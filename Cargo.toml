@@ -18,4 +18,4 @@ nix = { version = "0.29", features = [ "ioctl" ] }
 sensitive = { version = "0.10", default-features = false }
 
 [profile.release]
-lto = "thin"
+lto = true
