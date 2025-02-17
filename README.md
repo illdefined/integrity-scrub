@@ -27,3 +27,10 @@ This tool might delete all your data and summon a seal. Use it at your own risk.
 
 If you are not using a filesystem with copy‐on‐write semantics (e.g. btrfs) or data journalling (e.g. ext4 with
 `data=journal`), you should probably rely on dm-integrity’s data journal.
+
+## Intellectual property
+
+This work is dedicated to the public domain under the terms of the
+[CC0 1.0 licence](https://creativecommons.org/publicdomain/zero/1.0/).
+
+The author holds no patent rights related to this work.
