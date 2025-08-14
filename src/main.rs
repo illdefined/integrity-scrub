@@ -7,6 +7,7 @@ use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
+use bytesize::ByteSize;
 use libc::{c_ushort, c_int, size_t};
 use nix::{ioctl_read, ioctl_read_bad, ioctl_write_ptr, request_code_none};
 use sensitive::alloc::Sensitive;
@@ -351,8 +352,8 @@ impl Progress {
 		})
 	}
 
-	fn rate(size: u64, duration: Duration) -> String {
-		bytesize::to_string(u64::try_from(u128::from(size) * 1000 / duration.as_millis().max(1)).unwrap(), true)
+	fn rate(size: u64, duration: Duration) -> ByteSize {
+		ByteSize::b(u64::try_from(u128::from(size) * 1000 / duration.as_millis().max(1)).unwrap())
 	}
 
 	fn print(&mut self, dev: &Device, now: Instant) {
@@ -362,8 +363,8 @@ impl Progress {
 
 		eprintln!("{:>3} %   {:>9} / {}   {:>9} / s   {} corrupt sectors",
 		          self.total * 100 / dev.sectors,
-		          bytesize::to_string(self.total * dev.sector_size as u64, true),
-		          bytesize::to_string(dev.sectors * dev.sector_size as u64, true),
+		          ByteSize::b(self.total * dev.sector_size as u64),
+		          ByteSize::b(dev.sectors * dev.sector_size as u64),
 		          Self::rate(self.total * dev.sector_size as u64, now.duration_since(self.start)),
 		          self.error);
 		self.last = Some(now);
