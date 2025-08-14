@@ -2,7 +2,7 @@
 name = "integrity-scrub"
 version = "0.6.5"
 authors = [ "Mikael Voss <mvs@nyantec.com>" ]
-edition = "2021"
+edition = "2024"
 description = "Scrub dm-integrity volumes"
 repository = "https://github.com/illdefined/integrity-scrub"
 license = "CC0-1.0"
