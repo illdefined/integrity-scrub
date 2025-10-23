@@ -213,7 +213,7 @@ impl Device {
 		self.sectors.div_ceil(u64::from(self.maximum_io))
 	}
 
-	fn iter(&self) -> ChunkIterator {
+	fn iter(&self) -> ChunkIterator<'_> {
 		ChunkIterator {
 			device: self,
 			index: None
@@ -222,7 +222,7 @@ impl Device {
 }
 
 impl Chunk<'_> {
-	fn iter(&self) -> SectorIterator {
+	fn iter(&self) -> SectorIterator<'_> {
 		SectorIterator {
 			chunk: self,
 			index: None
@@ -296,11 +296,10 @@ impl<'t> Iterator for SectorIterator<'t> {
 	type Item = Result<Sector<'t>>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(index) = self.index {
-			if index >= self.chunk.count {
+		if let Some(index) = self.index
+			&& index >= self.chunk.count {
 				return None;
 			}
-		}
 
 		match self.chunk.device.test(self.absolute(), 1) {
 			Ok(Some(0)) => None,
